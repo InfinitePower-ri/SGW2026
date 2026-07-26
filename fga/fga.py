@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import io
+from pathlib import Path
 from typing import Dict, Tuple
 
 import networkx as nx
@@ -143,8 +144,12 @@ def load_bitcoin_otc(path: str) -> "nx.DiGraph":
     """
     G = nx.DiGraph()
 
-    opener = gzip.open if path.endswith(".gz") else open
-    with opener(path, "rt") as f:
+    data_path = Path(path)
+    if not data_path.is_absolute():
+        data_path = Path(__file__).resolve().parent / data_path
+
+    opener = gzip.open if str(data_path).endswith(".gz") else open
+    with opener(data_path, "rt") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
