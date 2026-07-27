@@ -41,9 +41,16 @@ python fga/fga.py --dataset soc-sign-bitcoinotc.csv
 ### 2) toy example で実行
 
 `--dataset` を指定しない場合、内蔵の toy example が実行されます。
+`--algorithm weighted` を指定した場合は、時系列属性付きの `toy_example_temporal` が使われます。
 
 ```bash
 python fga/fga.py
+```
+
+`weighted` の toy example では、`--visualize-toy` を併用してネットワーク図を保存できます。`weighted` の場合は時系列ラベルも同時に表示され、保存ファイル名は通常の toy 可視化と区別されます。
+
+```bash
+python fga/fga.py --algorithm weighted --visualize-toy
 ```
 
 ## 主な引数
@@ -54,7 +61,7 @@ python fga/fga.py
 - `--top` : 上位/下位表示件数 (既定値: 10)
 - `--max-iter` : 最大反復回数 (既定値: 50)
 - `--save-distributions` : Goodness/Fairness の分布ヒストグラムを PNG 保存
-- `--visualize-toy` : toy example 実行時にネットワーク図を PNG 保存 (ノード色=Goodness, ノードサイズ=Fairness, エッジラベル=重み)
+- `--visualize-toy` : toy example 実行時にネットワーク図を PNG 保存 (ノード色=Goodness, ノードサイズ=Fairness, エッジラベル=重み)。`--algorithm weighted` の toy example では、時系列属性付きの `toy_example_temporal` を可視化し、エッジラベルに重みと時刻を同時表示します。
 - `--output-dir` : 分布画像の保存先ディレクトリ (既定値: `fga/`)
 
 例:
@@ -80,9 +87,10 @@ python fga/fga.py --algorithm weighted --visualize-toy
 - `soc-sign-bitcoinotc_weighted_eps-0.001_max-iter-50_distributions.png`
 - `soc-sign-bitcoinotc_basic_eps-0.001_max-iter-50_distributions.png`
 
-toy example 可視化を保存した場合は、次のような名前になります。
+toy example 可視化を保存した場合は、アルゴリズムに応じて次のような名前になります。
 
-- `toy-example_weighted_eps-0.001_max-iter-50_graph.png`
+- `toy-example_basic_eps-0.001_max-iter-50_graph.png`
+- `toy-example_weighted_eps-0.001_max-iter-50_temporal_graph.png`
 
 ## 出力の見方
 
@@ -98,6 +106,7 @@ toy example 可視化を保存した場合は、次のような名前になり�
 
 - `--algorithm basic` のときは `compute_fairness_goodness` を実行し、データセット読み込みに `load_bitcoin_otc` を使います。
 - `--algorithm weighted` のときは `compute_fairness_goodness_with_evaluation_weights` を実行し、データセット読み込みに `load_bitcoin_otc_temporal` を使います。
+- `--dataset` を指定しない `--algorithm weighted` のときは、`toy_example_temporal` を使って時系列付き toy example を実行します。
 
 ## テスト
 

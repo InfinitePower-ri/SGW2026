@@ -123,11 +123,13 @@ def build_toy_visualization_output_path(
     algorithm: str,
     eps: float,
     max_iter: int,
+    temporal: bool = False,
     output_dir: Optional[str] = None,
 ) -> Path:
     """Build an output path for toy graph visualization."""
     base_dir = Path(output_dir) if output_dir is not None else Path(__file__).resolve().parent
-    file_name = f"toy-example_{algorithm}_eps-{eps:g}_max-iter-{max_iter}_graph.png"
+    temporal_suffix = "_temporal" if temporal else ""
+    file_name = f"toy-example_{algorithm}_eps-{eps:g}_max-iter-{max_iter}{temporal_suffix}_graph.png"
     return base_dir / file_name
 
 
@@ -136,6 +138,7 @@ def save_toy_graph_visualization(
     fairness: Dict,
     goodness: Dict,
     output_path: Path,
+    show_time_labels: bool = False,
 ) -> Path:
     """Save a toy-example graph plot with node color=goodness and size=fairness."""
     try:
@@ -180,7 +183,13 @@ def save_toy_graph_visualization(
         edgecolors="black",
     )
     nx.draw_networkx_labels(G, pos, ax=ax, font_size=10)
-    edge_labels = {(u, v): f"{_get_edge_weight(G, u, v):+.2f}" for u, v in G.edges()}
+    if show_time_labels:
+        edge_labels = {
+            (u, v): f"w={_get_edge_weight(G, u, v):+.2f}\nt={_get_edge_time(G, u, v):.2f}"
+            for u, v in G.edges()
+        }
+    else:
+        edge_labels = {(u, v): f"{_get_edge_weight(G, u, v):+.2f}" for u, v in G.edges()}
     nx.draw_networkx_edge_labels(
         G,
         pos,
@@ -194,7 +203,12 @@ def save_toy_graph_visualization(
 
     colorbar = fig.colorbar(node_artist, ax=ax, shrink=0.85)
     colorbar.set_label("Goodness")
-    ax.set_title("Toy Example Graph (color=goodness, size=fairness, edge label=weight)")
+    title = "Toy Example Graph (color=goodness, size=fairness, edge label=weight"
+    if show_time_labels:
+        title += ", time)"
+    else:
+        title += ")"
+    ax.set_title(title)
     ax.axis("off")
 
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
@@ -211,6 +225,20 @@ def _get_edge_weight(G: "nx.DiGraph", u, v) -> float:
         return 0.0
     try:
         return float(weight)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _get_edge_time(G: "nx.DiGraph", u, v) -> float:
+    """Return the edge time or 0.0 when the edge or time attribute is missing."""
+    edge_data = G.get_edge_data(u, v)
+    if not edge_data:
+        return 0.0
+    time_value = edge_data.get("time", 0.0)
+    if time_value is None:
+        return 0.0
+    try:
+        return float(time_value)
     except (TypeError, ValueError):
         return 0.0
 
@@ -512,18 +540,9 @@ def load_bitcoin_otc_temporal(path: str) -> "nx.DiGraph":
 # Small worked example (sanity check), loosely in the spirit of Fig. 2(a):
 # a small set of "fair/good" raters and two "unfair, very negative" raters.
 # ---------------------------------------------------------------------------
-def toy_example() -> "nx.DiGraph":
-    """Every node both rates and is rated, so f and g are both meaningful.
-
-    a, b, c, e: mutually consistent, fair raters -> high fairness, high goodness
-    d: rates wildly inconsistently (helps a lot, hurts a lot) -> low fairness,
-       but is itself rated well by the fair nodes -> high goodness
-    f, g: trolls that dump very negative ratings on everyone
-          -> low fairness (deviates from consensus) and very negative goodness
-             (the fair raters, in turn, rate them very negatively)
-    """
-    G = nx.DiGraph()
-    edges = [
+def _toy_example_edges():
+    """Return the canonical toy-example edge list."""
+    return [
         # fair vertices rating each other positively/consistently
         ("a", "c", 0.9), ("b", "c", 0.8), ("e", "c", 0.7),
         ("a", "b", 0.8), ("c", "b", 0.6), ("e", "b", 0.5),
@@ -540,8 +559,35 @@ def toy_example() -> "nx.DiGraph":
         ("f", "a", -0.9), ("f", "b", -0.9), ("f", "c", -0.9), ("f", "e", -0.9),
         ("g", "a", -0.85), ("g", "b", -0.9), ("g", "c", -0.85), ("g", "e", -0.9),
     ]
-    for u, v, w in edges:
+
+
+def toy_example() -> "nx.DiGraph":
+    """Every node both rates and is rated, so f and g are both meaningful.
+
+    a, b, c, e: mutually consistent, fair raters -> high fairness, high goodness
+    d: rates wildly inconsistently (helps a lot, hurts a lot) -> low fairness,
+       but is itself rated well by the fair nodes -> high goodness
+    f, g: trolls that dump very negative ratings on everyone
+          -> low fairness (deviates from consensus) and very negative goodness
+             (the fair raters, in turn, rate them very negatively)
+    """
+    G = nx.DiGraph()
+    for u, v, w in _toy_example_edges():
         G.add_edge(u, v, weight=w)
+    return G
+
+
+def toy_example_temporal() -> "nx.DiGraph":
+    """Toy example with the same ratings plus normalized time attributes.
+
+    The edge order is mapped linearly onto [0, 1] so the toy graph can be used
+    with the temporal evaluation-weighted FGA variant.
+    """
+    G = nx.DiGraph()
+    edges = _toy_example_edges()
+    last_index = max(len(edges) - 1, 1)
+    for index, (u, v, w) in enumerate(edges):
+        G.add_edge(u, v, weight=w, time=index / last_index)
     return G
 
 
@@ -593,7 +639,7 @@ def main():
         print(f"Loaded graph: |V|={G.number_of_nodes()}  |E|={G.number_of_edges()}")
     else:
         print("No --dataset given, running toy example instead.")
-        G = toy_example()
+        G = toy_example_temporal() if args.algorithm == "weighted" else toy_example()
 
     if args.algorithm == "basic":
         fairness, goodness = compute_fairness_goodness(
@@ -619,13 +665,21 @@ def main():
         if args.dataset:
             print("\n--visualize-toy was ignored because --dataset was provided.")
         else:
+            use_temporal_labels = args.algorithm == "weighted"
             output_path = build_toy_visualization_output_path(
                 algorithm=args.algorithm,
                 eps=args.eps,
                 max_iter=args.max_iter,
+                temporal=use_temporal_labels,
                 output_dir=args.output_dir,
             )
-            saved_path = save_toy_graph_visualization(G, fairness, goodness, output_path)
+            saved_path = save_toy_graph_visualization(
+                G,
+                fairness,
+                goodness,
+                output_path,
+                show_time_labels=use_temporal_labels,
+            )
             print(f"\nSaved toy graph visualization to {saved_path}")
 
     print("\nTop nodes by goodness:")
