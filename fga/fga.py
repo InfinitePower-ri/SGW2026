@@ -40,15 +40,6 @@ from typing import Dict, Optional, Tuple
 
 import networkx as nx
 
-try:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except ImportError:  # pragma: no cover - optional dependency
-    plt = None
-
-
 def _get_edge_weight(G: "nx.DiGraph", u, v) -> float:
     """Return the edge weight or 0.0 when the edge or weight attribute is missing."""
     edge_data = G.get_edge_data(u, v)
@@ -61,7 +52,6 @@ def _get_edge_weight(G: "nx.DiGraph", u, v) -> float:
         return float(weight)
     except (TypeError, ValueError):
         return 0.0
-
 
 def compute_fairness_goodness(
     G: "nx.DiGraph",
@@ -263,80 +253,6 @@ def compute_fairness_goodness_with_evaluation_weights(
 
     return f_prev, g_prev
 
-
-def fxg_predict(G: "nx.DiGraph", fairness: Dict, goodness: Dict, u, v) -> float:
-    """Predicted edge weight for (u, v), the FxG score: f(u) * g(v)."""
-    return fairness[u] * goodness[v]
-
-
-def compare_models(
-    G: "nx.DiGraph",
-    eps: float = 0.001,
-    max_iter: int = 1000,
-    top: int = 10,
-) -> list[dict]:
-    """Return a comparison summary between the original and weighted FGA models."""
-    base_fairness, base_goodness = compute_fairness_goodness(G, eps=eps, max_iter=max_iter)
-    weighted_fairness, weighted_goodness = compute_fairness_goodness_with_evaluation_weights(
-        G, eps=eps, max_iter=max_iter
-    )
-
-    rows = []
-    for node in sorted(G.nodes()):
-        rows.append(
-            {
-                "node": node,
-                "fairness_base": base_fairness.get(node, 0.0),
-                "fairness_weighted": weighted_fairness.get(node, 0.0),
-                "fairness_delta": weighted_fairness.get(node, 0.0) - base_fairness.get(node, 0.0),
-                "goodness_base": base_goodness.get(node, 0.0),
-                "goodness_weighted": weighted_goodness.get(node, 0.0),
-                "goodness_delta": weighted_goodness.get(node, 0.0) - base_goodness.get(node, 0.0),
-            }
-        )
-
-    rows.sort(key=lambda row: (row["goodness_delta"], row["fairness_delta"]), reverse=True)
-    return rows[:top]
-
-
-def plot_comparison(rows: list[dict], title: str = "FGA comparison", output_path: Optional[str] = None) -> None:
-    """Plot fairness/goodness comparison for the top-ranked nodes and optionally save it to a file."""
-    if plt is None:
-        print("matplotlib is not installed; skipping plot output.")
-        return
-
-    nodes = [row["node"] for row in rows]
-    fairness_base = [row["fairness_base"] for row in rows]
-    fairness_weighted = [row["fairness_weighted"] for row in rows]
-    goodness_base = [row["goodness_base"] for row in rows]
-    goodness_weighted = [row["goodness_weighted"] for row in rows]
-
-    x = range(len(nodes))
-    fig, axes = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
-    axes[0].plot(x, fairness_base, marker="o", label="fairness (base)")
-    axes[0].plot(x, fairness_weighted, marker="x", label="fairness (weighted)")
-    axes[0].set_ylabel("Fairness")
-    axes[0].set_title(title)
-    axes[0].legend()
-
-    axes[1].plot(x, goodness_base, marker="o", label="goodness (base)")
-    axes[1].plot(x, goodness_weighted, marker="x", label="goodness (weighted)")
-    axes[1].set_ylabel("Goodness")
-    axes[1].set_xticks(list(x))
-    axes[1].set_xticklabels(nodes, rotation=45, ha="right")
-    axes[1].set_xlabel("Node")
-    axes[1].legend()
-
-    fig.tight_layout()
-    if output_path:
-        fig.savefig(output_path, dpi=300, bbox_inches="tight")
-        print(f"Saved comparison plot to {output_path}")
-    if plt.get_backend().lower().endswith("agg"):
-        plt.close(fig)
-    else:
-        plt.show()
-
-
 # ---------------------------------------------------------------------------
 # Bitcoin-OTC loader
 # ---------------------------------------------------------------------------
@@ -477,18 +393,7 @@ def main():
     )
     parser.add_argument("--eps", type=float, default=0.001)
     parser.add_argument("--top", type=int, default=10, help="Show top-k by goodness/fairness")
-    parser.add_argument("--max-iter", type=int, default=50, help="Maximum FGA iterations for the comparison run")
-    parser.add_argument(
-        "--plot",
-        action="store_true",
-        help="Display a matplotlib comparison plot for the top-ranked nodes.",
-    )
-    parser.add_argument(
-        "--plot-output",
-        type=str,
-        default=None,
-        help="Optional path to save the comparison plot as an image file (for example: comparison.png).",
-    )
+    parser.add_argument("--max-iter", type=int, default=50, help="Maximum FGA iterations")
     args = parser.parse_args()
 
     if args.dataset:
@@ -499,40 +404,9 @@ def main():
         print("No --dataset given, running toy example instead.")
         G = toy_example()
 
-    base_fairness, base_goodness = compute_fairness_goodness(
-        G, eps=args.eps, max_iter=args.max_iter, verbose=False
-    )
     fairness, goodness = compute_fairness_goodness_with_evaluation_weights(
         G, eps=args.eps, max_iter=args.max_iter, verbose=False
     )
-
-    rows = compare_models(G, eps=args.eps, max_iter=args.max_iter, top=min(args.top, 20))
-
-    print("\nOriginal vs weighted FGA comparison:")
-    print("{:<10} {:>12} {:>12} {:>12} {:>12} {:>12} {:>12}".format(
-        "node",
-        "f_base",
-        "f_weighted",
-        "f_delta",
-        "g_base",
-        "g_weighted",
-        "g_delta",
-    ))
-    for row in rows:
-        print(
-            "{:<10} {:>12.3f} {:>12.3f} {:>12.3f} {:>12.3f} {:>12.3f} {:>12.3f}".format(
-                row["node"],
-                row["fairness_base"],
-                row["fairness_weighted"],
-                row["fairness_delta"],
-                row["goodness_base"],
-                row["goodness_weighted"],
-                row["goodness_delta"],
-            )
-        )
-
-    if args.plot:
-        plot_comparison(rows, output_path=args.plot_output)
 
     print("\nTop nodes by goodness:")
     for node, g in sorted(goodness.items(), key=lambda kv: kv[1], reverse=True)[: args.top]:

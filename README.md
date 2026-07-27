@@ -1,7 +1,83 @@
 # SGW2026
 
-ターミナル上で以下のコードを実行するとBitcoin OTCのデータセットを実行できます: 
+このリポジトリは、重み付き符号付きネットワーク (WSN) に対する
+Fairness-Goodness Algorithm (FGA) の実装と実行例を含みます。
 
+実装本体は `fga/fga.py` です。
+
+## できること
+
+- ノードごとの Fairness スコア (評価者としての一貫性)
+- ノードごとの Goodness スコア (被評価者としての信頼性)
+- Bitcoin OTC データセット (SNAP) を入力として実行
+- 小規模な toy example を使った動作確認
+
+## 前提環境
+
+- Python 3.9 以上を推奨
+- 必要パッケージ:
+	- networkx
+
+インストール例:
+
+```bash
+pip install networkx
 ```
-python fga\fga.py --dataset soc-sign-bitcoinotc.csv
+
+## 実行方法
+
+### 1) Bitcoin OTC データセットで実行
+
+`fga/fga.py` は、相対パスの場合に `fga` ディレクトリ基準でデータセットを読み込みます。
+そのため、同梱データセットを使う場合は次のコマンドで実行できます。
+
+```bash
+python fga/fga.py --dataset soc-sign-bitcoinotc.csv
+```
+
+`.gz` ファイルも読み込み可能です。
+
+### 2) toy example で実行
+
+`--dataset` を指定しない場合、内蔵の toy example が実行されます。
+
+```bash
+python fga/fga.py
+```
+
+## 主な引数
+
+- `--dataset` : 入力 CSV または CSV.GZ のパス
+- `--eps` : 収束判定しきい値 (既定値: 0.001)
+- `--top` : 上位/下位表示件数 (既定値: 10)
+- `--max-iter` : 最大反復回数 (既定値: 50)
+
+例:
+
+```bash
+python fga/fga.py --dataset soc-sign-bitcoinotc.csv --eps 0.001 --top 20 --max-iter 100
+```
+
+## 出力の見方
+
+実行すると次の 3 種類が表示されます。
+
+1. Goodness 上位ノード
+2. Goodness 下位ノード (荒らし/詐欺的ノード候補)
+3. Fairness 下位ノード (評価が不安定な評価者候補)
+
+各行にはノード ID と `f` (Fairness)、`g` (Goodness) が表示されます。
+
+## 実装上の補足
+
+- CLI では `compute_fairness_goodness_with_evaluation_weights` を使用します。
+- Bitcoin OTC の標準ローダー `load_bitcoin_otc` はエッジ重み (`weight`) を使います。
+- 時刻属性 (`time`) 付きで読み込みたい場合は `load_bitcoin_otc_temporal` を利用できます。
+
+## テスト
+
+`tests/` 配下にテストコードがあります。環境に応じて次のように実行してください。
+
+```bash
+python -m pytest
 ```
