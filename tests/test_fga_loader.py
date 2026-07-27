@@ -128,6 +128,21 @@ class TestToyVisualization(unittest.TestCase):
             Path("plots") / "toy-example_weighted_eps-0.001_max-iter-50_temporal_graph.png",
         )
 
+    def test_build_toy_visualization_output_path_uses_dataset_label(self):
+        output_path = fga.build_toy_visualization_output_path(
+            algorithm="weighted",
+            eps=0.001,
+            max_iter=50,
+            temporal=True,
+            dataset_label="toy_example_temporal_p_long",
+            output_dir="plots",
+        )
+
+        self.assertEqual(
+            output_path,
+            Path("plots") / "toy_example_temporal_p_long_weighted_eps-0.001_max-iter-50_temporal_graph.png",
+        )
+
     def test_save_toy_graph_visualization_saves_figure(self):
         pyplot_module = mock.Mock()
         matplotlib_module = mock.Mock()
@@ -203,6 +218,55 @@ class TestToyExampleTemporal(unittest.TestCase):
         for time in times:
             self.assertGreaterEqual(time, 0.0)
             self.assertLessEqual(time, 1.0)
+
+
+class TestToyExampleTemporalProbeNodes(unittest.TestCase):
+    def test_probe_nodes_share_edges_and_weights_but_not_time_spans(self):
+        long_graph = fga.toy_example_temporal_p_long()
+        short_graph = fga.toy_example_temporal_p_short()
+
+        self.assertIn("p_long", long_graph)
+        self.assertIn("p_short", short_graph)
+
+        counterpart_nodes = ["a", "b", "c", "d", "e", "f", "g"]
+        for node in counterpart_nodes:
+            long_out = long_graph.get_edge_data("p_long", node)
+            short_out = short_graph.get_edge_data("p_short", node)
+            self.assertIsNotNone(long_out)
+            self.assertIsNotNone(short_out)
+            self.assertEqual(long_out["weight"], short_out["weight"])
+
+            long_in = long_graph.get_edge_data(node, "p_long")
+            short_in = short_graph.get_edge_data(node, "p_short")
+            self.assertIsNotNone(long_in)
+            self.assertIsNotNone(short_in)
+            self.assertEqual(long_in["weight"], short_in["weight"])
+
+        long_times = [data["time"] for u, v, data in long_graph.edges(data=True) if u == "p_long" or v == "p_long"]
+        short_times = [data["time"] for u, v, data in short_graph.edges(data=True) if u == "p_short" or v == "p_short"]
+
+        self.assertAlmostEqual(min(long_times), 0.0)
+        self.assertAlmostEqual(max(long_times), 1.0)
+        self.assertGreater(fga.get_evaluation_period(long_graph, "p_long"), fga.get_evaluation_period(short_graph, "p_short"))
+        self.assertLess(max(short_times) - min(short_times), 0.05)
+
+
+class TestDatasetToySelection(unittest.TestCase):
+    def test_dataset_name_can_select_toy_example_temporal_p_long(self):
+        graph, show_time_labels, dataset_label = fga._load_dataset_graph("toy_example_temporal_p_long")
+
+        self.assertTrue(show_time_labels)
+        self.assertEqual(dataset_label, "toy_example_temporal_p_long")
+        self.assertIn("p_long", graph)
+        self.assertIsNotNone(graph.get_edge_data("p_long", "a"))
+
+    def test_dataset_name_can_select_toy_example_temporal_p_short(self):
+        graph, show_time_labels, dataset_label = fga._load_dataset_graph("toy_example_temporal_p_short")
+
+        self.assertTrue(show_time_labels)
+        self.assertEqual(dataset_label, "toy_example_temporal_p_short")
+        self.assertIn("p_short", graph)
+        self.assertIsNotNone(graph.get_edge_data("p_short", "a"))
 
 
 if __name__ == "__main__":

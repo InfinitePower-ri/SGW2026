@@ -124,12 +124,14 @@ def build_toy_visualization_output_path(
     eps: float,
     max_iter: int,
     temporal: bool = False,
+    dataset_label: Optional[str] = None,
     output_dir: Optional[str] = None,
 ) -> Path:
     """Build an output path for toy graph visualization."""
     base_dir = Path(output_dir) if output_dir is not None else Path(__file__).resolve().parent
     temporal_suffix = "_temporal" if temporal else ""
-    file_name = f"toy-example_{algorithm}_eps-{eps:g}_max-iter-{max_iter}{temporal_suffix}_graph.png"
+    dataset_prefix = _sanitize_filename_part(dataset_label) if dataset_label else "toy-example"
+    file_name = f"{dataset_prefix}_{algorithm}_eps-{eps:g}_max-iter-{max_iter}{temporal_suffix}_graph.png"
     return base_dir / file_name
 
 
@@ -241,6 +243,25 @@ def _get_edge_time(G: "nx.DiGraph", u, v) -> float:
         return float(time_value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _load_dataset_graph(dataset: str) -> Tuple["nx.DiGraph", bool, Optional[str]]:
+    """Load a graph from a dataset path or one of the built-in toy dataset names.
+
+    Returns a tuple of (graph, show_time_labels, toy_dataset_label).
+    """
+    toy_dataset_loaders = {
+        "toy_example": (toy_example, False),
+        "toy_example_temporal": (toy_example_temporal, True),
+        "toy_example_temporal_p_long": (toy_example_temporal_p_long, True),
+        "toy_example_temporal_p_short": (toy_example_temporal_p_short, True),
+    }
+    loader_info = toy_dataset_loaders.get(dataset)
+    if loader_info is not None:
+        loader, show_time_labels = loader_info
+        return loader(), show_time_labels, dataset
+
+    raise FileNotFoundError(dataset)
 
 def compute_fairness_goodness(
     G: "nx.DiGraph",
@@ -591,6 +612,50 @@ def toy_example_temporal() -> "nx.DiGraph":
     return G
 
 
+def _toy_example_temporal_with_probe_node(
+    probe_node: str,
+    probe_time_values,
+) -> "nx.DiGraph":
+    """Return the toy graph extended with one probe node and custom probe times."""
+    G = toy_example_temporal()
+    probe_edges = [
+        (probe_node, "a", 0.9),
+        (probe_node, "b", 0.7),
+        (probe_node, "c", -0.8),
+        (probe_node, "d", 0.6),
+        (probe_node, "e", 0.85),
+        (probe_node, "f", -0.9),
+        (probe_node, "g", 0.75),
+        ("a", probe_node, 0.8),
+        ("b", probe_node, 0.65),
+        ("c", probe_node, -0.75),
+        ("d", probe_node, 0.55),
+        ("e", probe_node, 0.9),
+        ("f", probe_node, -0.85),
+        ("g", probe_node, 0.7),
+    ]
+
+    probe_time_values = list(probe_time_values)
+    if len(probe_time_values) != len(probe_edges):
+        raise ValueError("probe_time_values must match the number of probe edges")
+
+    for (u, v, w), time_value in zip(probe_edges, probe_time_values):
+        G.add_edge(u, v, weight=w, time=time_value)
+    return G
+
+
+def toy_example_temporal_p_long() -> "nx.DiGraph":
+    """Toy example extended with p_long, whose probe edges span [0, 1]."""
+    probe_time_values = [index / 13.0 for index in range(14)]
+    return _toy_example_temporal_with_probe_node("p_long", probe_time_values)
+
+
+def toy_example_temporal_p_short() -> "nx.DiGraph":
+    """Toy example extended with p_short, whose probe edges cluster near 0.5."""
+    probe_time_values = [0.48 + 0.0015 * index for index in range(14)]
+    return _toy_example_temporal_with_probe_node("p_short", probe_time_values)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fairness-Goodness Algorithm (FGA)")
     parser.add_argument(
@@ -630,16 +695,27 @@ def main():
     )
     args = parser.parse_args()
 
+    toy_visualization = False
+    toy_dataset_label: Optional[str] = None
+    toy_visualization_show_time_labels = False
+
     if args.dataset:
         print(f"Loading WSN from {args.dataset} ...")
-        if args.algorithm == "basic":
-            G = load_bitcoin_otc(args.dataset)
-        else:
-            G = load_bitcoin_otc_temporal(args.dataset)
-        print(f"Loaded graph: |V|={G.number_of_nodes()}  |E|={G.number_of_edges()}")
+        try:
+            G, toy_visualization_show_time_labels, toy_dataset_label = _load_dataset_graph(args.dataset)
+            toy_visualization = True
+            print(f"Loaded toy graph: |V|={G.number_of_nodes()}  |E|={G.number_of_edges()}")
+        except FileNotFoundError:
+            if args.algorithm == "basic":
+                G = load_bitcoin_otc(args.dataset)
+            else:
+                G = load_bitcoin_otc_temporal(args.dataset)
+            print(f"Loaded graph: |V|={G.number_of_nodes()}  |E|={G.number_of_edges()}")
     else:
         print("No --dataset given, running toy example instead.")
         G = toy_example_temporal() if args.algorithm == "weighted" else toy_example()
+        toy_visualization = True
+        toy_visualization_show_time_labels = args.algorithm == "weighted"
 
     if args.algorithm == "basic":
         fairness, goodness = compute_fairness_goodness(
@@ -662,15 +738,15 @@ def main():
         print(f"\nSaved score distributions to {saved_path}")
 
     if args.visualize_toy:
-        if args.dataset:
+        if not toy_visualization:
             print("\n--visualize-toy was ignored because --dataset was provided.")
         else:
-            use_temporal_labels = args.algorithm == "weighted"
             output_path = build_toy_visualization_output_path(
                 algorithm=args.algorithm,
                 eps=args.eps,
                 max_iter=args.max_iter,
-                temporal=use_temporal_labels,
+                temporal=toy_visualization_show_time_labels,
+                dataset_label=toy_dataset_label,
                 output_dir=args.output_dir,
             )
             saved_path = save_toy_graph_visualization(
@@ -678,7 +754,7 @@ def main():
                 fairness,
                 goodness,
                 output_path,
-                show_time_labels=use_temporal_labels,
+                show_time_labels=toy_visualization_show_time_labels,
             )
             print(f"\nSaved toy graph visualization to {saved_path}")
 
