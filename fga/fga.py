@@ -374,14 +374,14 @@ def get_evaluation_period(G: "nx.DiGraph", u) -> Optional[float]:
     return max(times) - min(times)
 
 
-def _sigmoid(x: float) -> float:
+def _map_to_unit_interval(x: float) -> float:
     """Apply the logistic sigmoid function $1 / (1 + e^{-x})."""
     return 1.0 / (1.0 + math.exp(-x))
 
 
 def get_normalized_evaluation_count(G: "nx.DiGraph", u) -> float:
     """Normalize the evaluation count for node u into [0, 1] via sigmoid."""
-    return _sigmoid(get_evaluation_count(G, u))
+    return _map_to_unit_interval(get_evaluation_count(G, u))
 
 
 def get_normalized_evaluation_period(G: "nx.DiGraph", u) -> Optional[float]:
@@ -389,7 +389,7 @@ def get_normalized_evaluation_period(G: "nx.DiGraph", u) -> Optional[float]:
     period = get_evaluation_period(G, u)
     if period is None:
         return None
-    return _sigmoid(period)
+    return _map_to_unit_interval(period)
 
 
 def compute_fairness_goodness_with_evaluation_weights(
