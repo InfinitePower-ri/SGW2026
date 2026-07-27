@@ -8,8 +8,9 @@ import networkx as nx
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "fga" / "fga.py"
 SPEC = importlib.util.spec_from_file_location("fga_module", MODULE_PATH)
-fga = importlib.util.module_from_spec(SPEC)
+assert SPEC is not None
 assert SPEC.loader is not None
+fga = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(fga)
 
 
