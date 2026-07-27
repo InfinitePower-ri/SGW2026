@@ -52,6 +52,28 @@ class TestEvaluationStats(unittest.TestCase):
         self.assertLessEqual(goodness["v"], 1.0)
         self.assertGreaterEqual(goodness["v"], -1.0)
 
+    def test_compare_models(self):
+        graph = nx.DiGraph()
+        graph.add_edge("u", "v", weight=0.8, time=0.2)
+        graph.add_edge("u", "w", weight=-0.4, time=0.8)
+
+        rows = fga.compare_models(graph, eps=0.0, max_iter=10, top=5)
+
+        self.assertTrue(rows)
+        self.assertIn("node", rows[0])
+        self.assertIn("fairness_delta", rows[0])
+        self.assertIn("goodness_delta", rows[0])
+
+    def test_compute_fairness_goodness_handles_missing_weight_attributes(self):
+        graph = nx.DiGraph()
+        graph.add_edge("u", "v")
+        graph.add_edge("v", "u")
+
+        fairness, goodness = fga.compute_fairness_goodness(graph, eps=0.0, max_iter=5)
+
+        self.assertIn("u", fairness)
+        self.assertIn("v", goodness)
+
 
 if __name__ == "__main__":
     unittest.main()
