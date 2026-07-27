@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^c:/Users/RIKIHISA_EDU/Documents/GitHub/SGW2026/\\.venv/Scripts/python\\.exe -m unittest tests\\.test_fga_loader$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

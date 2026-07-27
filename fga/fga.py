@@ -173,7 +173,7 @@ def save_toy_graph_visualization(
         nodelist=nodes,
         node_color=node_colors,
         node_size=node_sizes,
-        cmap=plt.cm.RdYlGn,
+        cmap=plt.get_cmap("RdYlGn"),
         vmin=-1.0,
         vmax=1.0,
         linewidths=1.0,
