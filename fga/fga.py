@@ -34,8 +34,9 @@ from __future__ import annotations
 import argparse
 import gzip
 import io
+import math
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import networkx as nx
 
@@ -125,6 +126,122 @@ def compute_fairness_goodness(
     return f_prev, g_prev
 
 
+def get_evaluation_count(G: "nx.DiGraph", u) -> int:
+    """Return the number of evaluations made by node u.
+
+    In this module, an evaluation corresponds to an outgoing edge from u.
+    """
+    return G.out_degree(u)
+
+
+def get_evaluation_period(G: "nx.DiGraph", u) -> Optional[float]:
+    """Return the span of time covered by u's evaluations.
+
+    The function looks for an edge attribute named "time" on outgoing edges
+    from u and returns the difference between the maximum and minimum
+    timestamp found. If no such timestamps are available, it returns None.
+    """
+    times = []
+    for _, _, data in G.out_edges(u, data=True):
+        if "time" in data and data["time"] is not None:
+            times.append(float(data["time"]))
+
+    if not times:
+        return None
+
+    return max(times) - min(times)
+
+
+def _sigmoid(x: float) -> float:
+    """Apply the logistic sigmoid function $1 / (1 + e^{-x})."""
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def get_normalized_evaluation_count(G: "nx.DiGraph", u) -> float:
+    """Normalize the evaluation count for node u into [0, 1] via sigmoid."""
+    return _sigmoid(get_evaluation_count(G, u))
+
+
+def get_normalized_evaluation_period(G: "nx.DiGraph", u) -> Optional[float]:
+    """Normalize the evaluation period for node u into [0, 1] via sigmoid."""
+    period = get_evaluation_period(G, u)
+    if period is None:
+        return None
+    return _sigmoid(period)
+
+
+def compute_fairness_goodness_with_evaluation_weights(
+    G: "nx.DiGraph",
+    eps: float = 0.001,
+    max_iter: int = 1000,
+    verbose: bool = False,
+) -> Tuple[Dict, Dict]:
+    """Compute fairness and goodness while weighting by evaluation statistics.
+
+    The original FGA update is modified so that:
+    - fairness for node u is scaled by both the normalized evaluation count
+      and the normalized evaluation period of u;
+    - goodness for node v is scaled by the normalized evaluation period of
+      each rater u that contributes to v.
+    """
+    nodes = list(G.nodes())
+
+    in_nbrs = {v: list(G.predecessors(v)) for v in nodes}
+    out_nbrs = {u: list(G.successors(u)) for u in nodes}
+
+    f_prev = {u: 1.0 for u in nodes}
+    g_prev = {u: 1.0 for u in nodes}
+
+    t = -1
+    while True:
+        t += 1
+
+        g_next: Dict = {}
+        for v in nodes:
+            preds = in_nbrs[v]
+            if not preds:
+                g_next[v] = g_prev[v]
+                continue
+            s = 0.0
+            for u in preds:
+                period_weight = get_normalized_evaluation_period(G, u)
+                if period_weight is None:
+                    period_weight = 1.0
+                w = G[u][v]["weight"]
+                s += f_prev[u] * w * period_weight
+            g_next[v] = s / len(preds)
+
+        f_next: Dict = {}
+        for u in nodes:
+            succs = out_nbrs[u]
+            if not succs:
+                f_next[u] = f_prev[u]
+                continue
+            s = 0.0
+            for v in succs:
+                w = G[u][v]["weight"]
+                s += abs(w - g_next[v])
+            base_fairness = 1.0 - s / (2.0 * len(succs))
+            count_weight = get_normalized_evaluation_count(G, u)
+            period_weight = get_normalized_evaluation_period(G, u)
+            if period_weight is None:
+                period_weight = 1.0
+            f_next[u] = base_fairness * count_weight * period_weight
+
+        delta_f = sum(abs(f_next[u] - f_prev[u]) for u in nodes)
+        delta_g = sum(abs(g_next[u] - g_prev[u]) for u in nodes)
+
+        if verbose:
+            print(f"iter {t}: delta_f={delta_f:.6f}  delta_g={delta_g:.6f}")
+
+        f_prev, g_prev = f_next, g_next
+
+        if (delta_f <= eps and delta_g <= eps) or t >= max_iter:
+            break
+
+    return f_prev, g_prev
+
+
 def fxg_predict(G: "nx.DiGraph", fairness: Dict, goodness: Dict, u, v) -> float:
     """Predicted edge weight for (u, v), the FxG score: f(u) * g(v)."""
     return fairness[u] * goodness[v]
@@ -155,15 +272,71 @@ def load_bitcoin_otc(path: str) -> "nx.DiGraph":
             if not line or line.startswith("#"):
                 continue
             parts = line.split(",")
-            if len(parts) < 3:
+            if len(parts) < 4:
                 continue
-            src, tgt, rating = parts[0], parts[1], parts[2]
+            src, tgt, rating, timestamp = parts[0], parts[1], parts[2], parts[3]
             u, v = int(src), int(tgt)
             w = float(rating) / 10.0
             w = max(-1.0, min(1.0, w))  # clip, just in case
             # If a (u, v) pair repeats, keep the latest occurrence
             # (SNAP's file is already deduplicated per pair in practice).
             G.add_edge(u, v, weight=w)
+    return G
+
+
+def load_bitcoin_otc_temporal(path: str) -> "nx.DiGraph":
+    """Load the Bitcoin OTC dataset while preserving the edge timestamps.
+
+    The CSV format is SOURCE,TARGET,RATING,TIME. This loader parses the
+    timestamp column, normalizes the values to the range [0, 1], and stores
+    the normalized time as an edge attribute named "time".
+    """
+    G = nx.DiGraph()
+
+    data_path = Path(path)
+    if not data_path.is_absolute():
+        data_path = Path(__file__).resolve().parent / data_path
+
+    timestamps = []
+    opener = gzip.open if str(data_path).endswith(".gz") else open
+    with opener(data_path, "rt") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(",")
+            if len(parts) < 4:
+                continue
+            src, tgt, rating, timestamp = parts[0], parts[1], parts[2], parts[3]
+            timestamps.append(float(timestamp))
+
+    if not timestamps:
+        return G
+
+    min_time = min(timestamps)
+    max_time = max(timestamps)
+    if max_time == min_time:
+        normalized_range = 1.0
+    else:
+        normalized_range = max_time - min_time
+
+    opener = gzip.open if str(data_path).endswith(".gz") else open
+    with opener(data_path, "rt") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(",")
+            if len(parts) < 4:
+                continue
+            src, tgt, rating, timestamp = parts[0], parts[1], parts[2], parts[3]
+            u, v = int(src), int(tgt)
+            w = float(rating) / 10.0
+            w = max(-1.0, min(1.0, w))
+            ts = float(timestamp)
+            normalized_time = (ts - min_time) / normalized_range
+            G.add_edge(u, v, weight=w, time=normalized_time)
+
     return G
 
 
@@ -224,7 +397,9 @@ def main():
         print("No --dataset given, running toy example instead.")
         G = toy_example()
 
-    fairness, goodness = compute_fairness_goodness(G, eps=args.eps, verbose=True)
+    fairness, goodness = compute_fairness_goodness_with_evaluation_weights(
+        G, eps=args.eps, verbose=True
+    )
 
     print("\nTop nodes by goodness:")
     for node, g in sorted(goodness.items(), key=lambda kv: kv[1], reverse=True)[: args.top]:
