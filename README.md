@@ -48,6 +48,7 @@ python fga/fga.py
 ## 主な引数
 
 - `--dataset` : 入力 CSV または CSV.GZ のパス
+- `--algorithm` : `basic` または `weighted` (既定値: `weighted`)
 - `--eps` : 収束判定しきい値 (既定値: 0.001)
 - `--top` : 上位/下位表示件数 (既定値: 10)
 - `--max-iter` : 最大反復回数 (既定値: 50)
@@ -70,9 +71,8 @@ python fga/fga.py --dataset soc-sign-bitcoinotc.csv --eps 0.001 --top 20 --max-i
 
 ## 実装上の補足
 
-- CLI では `compute_fairness_goodness_with_evaluation_weights` を使用します。
-- Bitcoin OTC の標準ローダー `load_bitcoin_otc` はエッジ重み (`weight`) を使います。
-- 時刻属性 (`time`) 付きで読み込みたい場合は `load_bitcoin_otc_temporal` を利用できます。
+- `--algorithm basic` のときは `compute_fairness_goodness` を実行し、データセット読み込みに `load_bitcoin_otc` を使います。
+- `--algorithm weighted` のときは `compute_fairness_goodness_with_evaluation_weights` を実行し、データセット読み込みに `load_bitcoin_otc_temporal` を使います。
 
 ## テスト
 

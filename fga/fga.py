@@ -193,8 +193,8 @@ def compute_fairness_goodness_with_evaluation_weights(
     The original FGA update is modified so that:
     - fairness for node u is scaled by both the normalized evaluation count
       and the normalized evaluation period of u;
-    - goodness for node v is scaled by the normalized evaluation period of
-      each rater u that contributes to v.
+        - goodness for node v is first computed by the original FGA update and
+            then scaled by the normalized evaluation period of v itself.
     """
     nodes = list(G.nodes())
 
@@ -216,12 +216,13 @@ def compute_fairness_goodness_with_evaluation_weights(
                 continue
             s = 0.0
             for u in preds:
-                period_weight = get_normalized_evaluation_period(G, u)
-                if period_weight is None:
-                    period_weight = 1.0
                 w = _get_edge_weight(G, u, v)
-                s += f_prev[u] * w * period_weight
-            g_next[v] = s / len(preds)
+                s += f_prev[u] * w
+            base_goodness = s / len(preds)
+            period_weight = get_normalized_evaluation_period(G, v)
+            if period_weight is None:
+                period_weight = 1.0
+            g_next[v] = base_goodness * period_weight
 
         f_next: Dict = {}
         for u in nodes:
@@ -391,6 +392,16 @@ def main():
         default=None,
         help="Path to soc-sign-bitcoinotc.csv(.gz). If omitted, runs the toy example.",
     )
+    parser.add_argument(
+        "--algorithm",
+        type=str,
+        choices=["basic", "weighted"],
+        default="weighted",
+        help=(
+            "Algorithm variant to run: 'basic' uses the original FGA update, "
+            "'weighted' uses evaluation-count/time weighted updates."
+        ),
+    )
     parser.add_argument("--eps", type=float, default=0.001)
     parser.add_argument("--top", type=int, default=10, help="Show top-k by goodness/fairness")
     parser.add_argument("--max-iter", type=int, default=50, help="Maximum FGA iterations")
@@ -398,15 +409,23 @@ def main():
 
     if args.dataset:
         print(f"Loading WSN from {args.dataset} ...")
-        G = load_bitcoin_otc(args.dataset)
+        if args.algorithm == "basic":
+            G = load_bitcoin_otc(args.dataset)
+        else:
+            G = load_bitcoin_otc_temporal(args.dataset)
         print(f"Loaded graph: |V|={G.number_of_nodes()}  |E|={G.number_of_edges()}")
     else:
         print("No --dataset given, running toy example instead.")
         G = toy_example()
 
-    fairness, goodness = compute_fairness_goodness_with_evaluation_weights(
-        G, eps=args.eps, max_iter=args.max_iter, verbose=False
-    )
+    if args.algorithm == "basic":
+        fairness, goodness = compute_fairness_goodness(
+            G, eps=args.eps, max_iter=args.max_iter, verbose=False
+        )
+    else:
+        fairness, goodness = compute_fairness_goodness_with_evaluation_weights(
+            G, eps=args.eps, max_iter=args.max_iter, verbose=False
+        )
 
     print("\nTop nodes by goodness:")
     for node, g in sorted(goodness.items(), key=lambda kv: kv[1], reverse=True)[: args.top]:
