@@ -40,6 +40,84 @@ from typing import Dict, Optional, Tuple
 
 import networkx as nx
 
+
+def _sanitize_filename_part(value: str) -> str:
+    """Convert a CLI-derived value into a filesystem-friendly token."""
+    sanitized = []
+    for char in value:
+        if char.isalnum() or char in {"-", "_", "."}:
+            sanitized.append(char)
+        else:
+            sanitized.append("-")
+    return "".join(sanitized).strip("-_.") or "value"
+
+
+def _get_dataset_label(dataset: Optional[str]) -> str:
+    """Return a short dataset label for plot file names."""
+    if dataset is None:
+        return "toy-example"
+
+    dataset_name = Path(dataset).name
+    for suffix in (".csv.gz", ".csv", ".gz"):
+        if dataset_name.endswith(suffix):
+            dataset_name = dataset_name[: -len(suffix)]
+            break
+
+    return _sanitize_filename_part(dataset_name)
+
+
+def build_distribution_output_path(
+    dataset: Optional[str],
+    algorithm: str,
+    eps: float,
+    max_iter: int,
+    output_dir: Optional[str] = None,
+) -> Path:
+    """Build an output path that reflects the run configuration."""
+    base_dir = Path(output_dir) if output_dir is not None else Path(__file__).resolve().parent
+    file_name = (
+        f"{_get_dataset_label(dataset)}_{algorithm}_"
+        f"eps-{eps:g}_max-iter-{max_iter}_distributions.png"
+    )
+    return base_dir / file_name
+
+
+def save_score_distributions(
+    fairness: Dict,
+    goodness: Dict,
+    output_path: Path,
+) -> Path:
+    """Save fairness and goodness histograms using matplotlib."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise RuntimeError(
+            "matplotlib is required to save distributions. Install it with 'pip install matplotlib'."
+        ) from exc
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4), constrained_layout=True)
+
+    goodness_values = list(goodness.values())
+    fairness_values = list(fairness.values())
+
+    axes[0].hist(goodness_values, bins=30, range=(-1.0, 1.0), color="steelblue", edgecolor="black")
+    axes[0].set_title("Goodness Distribution")
+    axes[0].set_xlabel("Goodness")
+    axes[0].set_ylabel("Node Count")
+    axes[0].set_xlim(-1.0, 1.0)
+
+    axes[1].hist(fairness_values, bins=30, range=(0.0, 1.0), color="darkorange", edgecolor="black")
+    axes[1].set_title("Fairness Distribution")
+    axes[1].set_xlabel("Fairness")
+    axes[1].set_ylabel("Node Count")
+    axes[1].set_xlim(0.0, 1.0)
+
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
 def _get_edge_weight(G: "nx.DiGraph", u, v) -> float:
     """Return the edge weight or 0.0 when the edge or weight attribute is missing."""
     edge_data = G.get_edge_data(u, v)
@@ -405,6 +483,17 @@ def main():
     parser.add_argument("--eps", type=float, default=0.001)
     parser.add_argument("--top", type=int, default=10, help="Show top-k by goodness/fairness")
     parser.add_argument("--max-iter", type=int, default=50, help="Maximum FGA iterations")
+    parser.add_argument(
+        "--save-distributions",
+        action="store_true",
+        help="Save goodness/fairness distribution histograms as a PNG file.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Directory where distribution images are saved (default: fga directory).",
+    )
     args = parser.parse_args()
 
     if args.dataset:
@@ -426,6 +515,17 @@ def main():
         fairness, goodness = compute_fairness_goodness_with_evaluation_weights(
             G, eps=args.eps, max_iter=args.max_iter, verbose=False
         )
+
+    if args.save_distributions:
+        output_path = build_distribution_output_path(
+            dataset=args.dataset,
+            algorithm=args.algorithm,
+            eps=args.eps,
+            max_iter=args.max_iter,
+            output_dir=args.output_dir,
+        )
+        saved_path = save_score_distributions(fairness, goodness, output_path)
+        print(f"\nSaved score distributions to {saved_path}")
 
     print("\nTop nodes by goodness:")
     for node, g in sorted(goodness.items(), key=lambda kv: kv[1], reverse=True)[: args.top]:

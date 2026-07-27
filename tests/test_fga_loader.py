@@ -1,6 +1,8 @@
 import importlib.util
 import math
+import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import networkx as nx
@@ -62,6 +64,53 @@ class TestEvaluationStats(unittest.TestCase):
 
         self.assertIn("u", fairness)
         self.assertIn("v", goodness)
+
+
+class TestDistributionPlots(unittest.TestCase):
+    def test_build_distribution_output_path_reflects_run_arguments(self):
+        output_path = fga.build_distribution_output_path(
+            dataset="soc-sign-bitcoinotc.csv",
+            algorithm="weighted",
+            eps=0.001,
+            max_iter=50,
+            output_dir="plots",
+        )
+
+        self.assertEqual(
+            output_path,
+            Path("plots") / "soc-sign-bitcoinotc_weighted_eps-0.001_max-iter-50_distributions.png",
+        )
+
+    def test_save_score_distributions_uses_expected_axis_ranges(self):
+        pyplot_module = mock.Mock()
+        matplotlib_module = mock.Mock()
+        axes = [mock.Mock(), mock.Mock()]
+        figure = mock.Mock()
+
+        pyplot_module.subplots = mock.Mock(return_value=(figure, axes))
+        pyplot_module.close = mock.Mock()
+        matplotlib_module.pyplot = pyplot_module
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "matplotlib": matplotlib_module,
+                "matplotlib.pyplot": pyplot_module,
+            },
+        ):
+            output_path = fga.save_score_distributions(
+                fairness={"a": 0.2, "b": 0.8},
+                goodness={"a": -0.4, "b": 0.6},
+                output_path=Path("plots") / "toy_basic_eps-0.1_max-iter-5_distributions.png",
+            )
+
+        self.assertEqual(output_path, Path("plots") / "toy_basic_eps-0.1_max-iter-5_distributions.png")
+        axes[0].hist.assert_called_once()
+        axes[1].hist.assert_called_once()
+        axes[0].set_xlim.assert_called_once_with(-1.0, 1.0)
+        axes[1].set_xlim.assert_called_once_with(0.0, 1.0)
+        figure.savefig.assert_called_once_with(output_path, dpi=150, bbox_inches="tight")
+        pyplot_module.close.assert_called_once_with(figure)
 
 
 if __name__ == "__main__":

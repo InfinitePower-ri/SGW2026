@@ -17,11 +17,12 @@ Fairness-Goodness Algorithm (FGA) の実装と実行例を含みます。
 - Python 3.9 以上を推奨
 - 必要パッケージ:
 	- networkx
+	- matplotlib
 
 インストール例:
 
 ```bash
-pip install networkx
+pip install networkx matplotlib
 ```
 
 ## 実行方法
@@ -52,12 +53,25 @@ python fga/fga.py
 - `--eps` : 収束判定しきい値 (既定値: 0.001)
 - `--top` : 上位/下位表示件数 (既定値: 10)
 - `--max-iter` : 最大反復回数 (既定値: 50)
+- `--save-distributions` : Goodness/Fairness の分布ヒストグラムを PNG 保存
+- `--output-dir` : 分布画像の保存先ディレクトリ (既定値: `fga/`)
 
 例:
 
 ```bash
 python fga/fga.py --dataset soc-sign-bitcoinotc.csv --eps 0.001 --top 20 --max-iter 100
 ```
+
+分布画像も保存する例:
+
+```bash
+python fga/fga.py --dataset soc-sign-bitcoinotc.csv --algorithm weighted --save-distributions
+```
+
+保存ファイル名は実行条件に応じて変わります。例えば `weighted` と `basic` を比較する場合、次のような名前で保存されます。
+
+- `soc-sign-bitcoinotc_weighted_eps-0.001_max-iter-50_distributions.png`
+- `soc-sign-bitcoinotc_basic_eps-0.001_max-iter-50_distributions.png`
 
 ## 出力の見方
 
