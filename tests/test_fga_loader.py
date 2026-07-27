@@ -113,5 +113,75 @@ class TestDistributionPlots(unittest.TestCase):
         pyplot_module.close.assert_called_once_with(figure)
 
 
+class TestToyVisualization(unittest.TestCase):
+    def test_build_toy_visualization_output_path_reflects_run_arguments(self):
+        output_path = fga.build_toy_visualization_output_path(
+            algorithm="weighted",
+            eps=0.001,
+            max_iter=50,
+            output_dir="plots",
+        )
+
+        self.assertEqual(
+            output_path,
+            Path("plots") / "toy-example_weighted_eps-0.001_max-iter-50_graph.png",
+        )
+
+    def test_save_toy_graph_visualization_saves_figure(self):
+        pyplot_module = mock.Mock()
+        matplotlib_module = mock.Mock()
+        figure = mock.Mock()
+        axis = mock.Mock()
+        node_artist = mock.Mock()
+        colorbar = mock.Mock()
+
+        figure.colorbar = mock.Mock(return_value=colorbar)
+        pyplot_module.subplots = mock.Mock(return_value=(figure, axis))
+        pyplot_module.close = mock.Mock()
+        pyplot_module.cm = mock.Mock()
+        pyplot_module.cm.RdYlGn = mock.Mock(name="RdYlGn")
+        matplotlib_module.pyplot = pyplot_module
+
+        graph = nx.DiGraph()
+        graph.add_edge("a", "b", weight=0.8)
+        graph.add_edge("b", "a", weight=-0.4)
+
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "matplotlib": matplotlib_module,
+                "matplotlib.pyplot": pyplot_module,
+            },
+        ):
+            with mock.patch.object(fga.nx, "spring_layout", return_value={"a": (0.0, 0.0), "b": (1.0, 1.0)}):
+                with mock.patch.object(fga.nx, "draw_networkx_edges") as draw_edges:
+                    with mock.patch.object(fga.nx, "draw_networkx_nodes", return_value=node_artist) as draw_nodes:
+                        with mock.patch.object(fga.nx, "draw_networkx_labels") as draw_labels:
+                            with mock.patch.object(fga.nx, "draw_networkx_edge_labels") as draw_edge_labels:
+                                output_path = fga.save_toy_graph_visualization(
+                                    G=graph,
+                                    fairness={"a": 0.7, "b": 0.4},
+                                    goodness={"a": 0.5, "b": -0.3},
+                                    output_path=Path("plots") / "toy-example_weighted_eps-0.001_max-iter-50_graph.png",
+                                )
+
+        self.assertEqual(output_path, Path("plots") / "toy-example_weighted_eps-0.001_max-iter-50_graph.png")
+        draw_edges.assert_called_once()
+        draw_nodes.assert_called_once()
+        draw_labels.assert_called_once()
+        draw_edge_labels.assert_called_once()
+        self.assertEqual(
+            draw_edge_labels.call_args.kwargs["edge_labels"],
+            {("a", "b"): "+0.80", ("b", "a"): "-0.40"},
+        )
+        figure.colorbar.assert_called_once_with(node_artist, ax=axis, shrink=0.85)
+        colorbar.set_label.assert_called_once_with("Goodness")
+        axis.set_title.assert_called_once_with(
+            "Toy Example Graph (color=goodness, size=fairness, edge label=weight)"
+        )
+        figure.savefig.assert_called_once_with(output_path, dpi=150, bbox_inches="tight")
+        pyplot_module.close.assert_called_once_with(figure)
+
+
 if __name__ == "__main__":
     unittest.main()

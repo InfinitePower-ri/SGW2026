@@ -118,6 +118,89 @@ def save_score_distributions(
     plt.close(fig)
     return output_path
 
+
+def build_toy_visualization_output_path(
+    algorithm: str,
+    eps: float,
+    max_iter: int,
+    output_dir: Optional[str] = None,
+) -> Path:
+    """Build an output path for toy graph visualization."""
+    base_dir = Path(output_dir) if output_dir is not None else Path(__file__).resolve().parent
+    file_name = f"toy-example_{algorithm}_eps-{eps:g}_max-iter-{max_iter}_graph.png"
+    return base_dir / file_name
+
+
+def save_toy_graph_visualization(
+    G: "nx.DiGraph",
+    fairness: Dict,
+    goodness: Dict,
+    output_path: Path,
+) -> Path:
+    """Save a toy-example graph plot with node color=goodness and size=fairness."""
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise RuntimeError(
+            "matplotlib is required to visualize the toy graph. Install it with 'pip install matplotlib'."
+        ) from exc
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 7), constrained_layout=True)
+    pos = nx.spring_layout(G, seed=42)
+    nodes = list(G.nodes())
+
+    node_colors = [float(goodness.get(node, 0.0)) for node in nodes]
+    node_sizes = [300.0 + 900.0 * max(0.0, min(1.0, float(fairness.get(node, 0.0)))) for node in nodes]
+    edge_colors = ["#2ca02c" if _get_edge_weight(G, u, v) >= 0.0 else "#d62728" for u, v in G.edges()]
+    edge_widths = [1.0 + 2.0 * abs(_get_edge_weight(G, u, v)) for u, v in G.edges()]
+
+    nx.draw_networkx_edges(
+        G,
+        pos,
+        ax=ax,
+        edge_color=edge_colors,
+        width=edge_widths,
+        arrows=True,
+        arrowsize=14,
+        alpha=0.7,
+    )
+    node_artist = nx.draw_networkx_nodes(
+        G,
+        pos,
+        ax=ax,
+        nodelist=nodes,
+        node_color=node_colors,
+        node_size=node_sizes,
+        cmap=plt.cm.RdYlGn,
+        vmin=-1.0,
+        vmax=1.0,
+        linewidths=1.0,
+        edgecolors="black",
+    )
+    nx.draw_networkx_labels(G, pos, ax=ax, font_size=10)
+    edge_labels = {(u, v): f"{_get_edge_weight(G, u, v):+.2f}" for u, v in G.edges()}
+    nx.draw_networkx_edge_labels(
+        G,
+        pos,
+        ax=ax,
+        edge_labels=edge_labels,
+        font_size=8,
+        font_color="#303030",
+        rotate=False,
+        bbox={"alpha": 0.6, "edgecolor": "none", "facecolor": "white"},
+    )
+
+    colorbar = fig.colorbar(node_artist, ax=ax, shrink=0.85)
+    colorbar.set_label("Goodness")
+    ax.set_title("Toy Example Graph (color=goodness, size=fairness, edge label=weight)")
+    ax.axis("off")
+
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
 def _get_edge_weight(G: "nx.DiGraph", u, v) -> float:
     """Return the edge weight or 0.0 when the edge or weight attribute is missing."""
     edge_data = G.get_edge_data(u, v)
@@ -494,6 +577,11 @@ def main():
         default=None,
         help="Directory where distribution images are saved (default: fga directory).",
     )
+    parser.add_argument(
+        "--visualize-toy",
+        action="store_true",
+        help="Save a toy-graph visualization PNG when running without --dataset.",
+    )
     args = parser.parse_args()
 
     if args.dataset:
@@ -526,6 +614,19 @@ def main():
         )
         saved_path = save_score_distributions(fairness, goodness, output_path)
         print(f"\nSaved score distributions to {saved_path}")
+
+    if args.visualize_toy:
+        if args.dataset:
+            print("\n--visualize-toy was ignored because --dataset was provided.")
+        else:
+            output_path = build_toy_visualization_output_path(
+                algorithm=args.algorithm,
+                eps=args.eps,
+                max_iter=args.max_iter,
+                output_dir=args.output_dir,
+            )
+            saved_path = save_toy_graph_visualization(G, fairness, goodness, output_path)
+            print(f"\nSaved toy graph visualization to {saved_path}")
 
     print("\nTop nodes by goodness:")
     for node, g in sorted(goodness.items(), key=lambda kv: kv[1], reverse=True)[: args.top]:

@@ -54,6 +54,7 @@ python fga/fga.py
 - `--top` : 上位/下位表示件数 (既定値: 10)
 - `--max-iter` : 最大反復回数 (既定値: 50)
 - `--save-distributions` : Goodness/Fairness の分布ヒストグラムを PNG 保存
+- `--visualize-toy` : toy example 実行時にネットワーク図を PNG 保存 (ノード色=Goodness, ノードサイズ=Fairness, エッジラベル=重み)
 - `--output-dir` : 分布画像の保存先ディレクトリ (既定値: `fga/`)
 
 例:
@@ -68,10 +69,20 @@ python fga/fga.py --dataset soc-sign-bitcoinotc.csv --eps 0.001 --top 20 --max-i
 python fga/fga.py --dataset soc-sign-bitcoinotc.csv --algorithm weighted --save-distributions
 ```
 
+toy example のネットワーク図を保存する例:
+
+```bash
+python fga/fga.py --algorithm weighted --visualize-toy
+```
+
 保存ファイル名は実行条件に応じて変わります。例えば `weighted` と `basic` を比較する場合、次のような名前で保存されます。
 
 - `soc-sign-bitcoinotc_weighted_eps-0.001_max-iter-50_distributions.png`
 - `soc-sign-bitcoinotc_basic_eps-0.001_max-iter-50_distributions.png`
+
+toy example 可視化を保存した場合は、次のような名前になります。
+
+- `toy-example_weighted_eps-0.001_max-iter-50_graph.png`
 
 ## 出力の見方
 
