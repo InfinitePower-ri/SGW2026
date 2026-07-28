@@ -81,31 +81,6 @@ python fga/fga.py --dataset toy_example_temporal_p_long --algorithm weighted --v
 - `--visualize-toy` : toy グラフを PNG 保存 (ノード色=Goodness, ノードサイズ=Fairness)。時系列属性がある toy の場合はエッジラベルに重みと時刻を同時表示します。
 - `--output-dir` : 分布画像と toy 可視化画像の保存先ディレクトリ (既定値: `fga/`)
 
-## データセット概要
-
-このリポジトリで利用できるデータセットは、外部データセット 1 種類と内蔵 toy データセット 4 種類です。
-
-- `soc-sign-bitcoinotc.csv`
-	- 形式: CSV (カンマ区切り)
-	- 由来: SNAP の Bitcoin OTC 署名付き信頼ネットワーク
-	- 想定カラム: `source, target, rating, time`
-	- 用途: 実データに対する FGA (basic/weighted) の実行
-- `toy_example`
-	- 形式: 内蔵 toy データ (非時系列)
-	- 用途: 最小構成でのアルゴリズム挙動確認
-- `toy_example_temporal`
-	- 形式: 内蔵 toy データ (時系列付き)
-	- 特徴: `time` 属性を [0, 1] に正規化
-	- 用途: weighted 版 FGA の基本挙動確認
-- `toy_example_temporal_p_long`
-	- 形式: 内蔵 toy データ (時系列付き)
-	- 特徴: 観測期間を長めに分散させた時系列
-	- 用途: 評価期間が長いケースの比較
-- `toy_example_temporal_p_short`
-	- 形式: 内蔵 toy データ (時系列付き)
-	- 特徴: 観測時刻が中盤に集中した時系列
-	- 用途: 評価期間が短いケースの比較
-
 例:
 
 ```bash
@@ -167,9 +142,3 @@ toy example 可視化を保存した場合は、アルゴリズムに応じて�
 ```bash
 python -m pytest
 ```
-
-## 追記
-
-`soc-sign-bitcoinotc.csv` は、Bitcoin OTC ユーザ間の評価関係を表す符号付き有向ネットワークデータで、各行は「評価者ノード・被評価者ノード・評価値・タイムスタンプ」に対応します。本実装では `rating` をエッジ重みとして利用し、weighted 版では `time` を [0, 1] に正規化して時系列情報として扱います。
-
-また、`fga.py` には一部、生成 AI を用いて作成・補助されたコードが含まれています。
