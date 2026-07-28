@@ -107,14 +107,15 @@ def save_score_distributions(
     axes[0].set_xlabel("Goodness")
     axes[0].set_ylabel("Node Count")
     axes[0].set_xlim(-1.0, 1.0)
-    axes[0].set_ylim(0, 4000)
+    axes[0].set_ylim(0, max(1, len(goodness_values)))
 
     axes[1].hist(fairness_values, bins=30, range=(0.0, 1.0), color="darkorange", edgecolor="black")
     axes[1].set_title("Fairness Distribution")
     axes[1].set_xlabel("Fairness")
     axes[1].set_ylabel("Node Count")
     axes[1].set_xlim(0.0, 1.0)
-    axes[1].set_ylim(0, 4000)
+    axes[1].set_xticks([tick / 5 for tick in range(6)])
+    axes[1].set_ylim(0, max(1, len(fairness_values)))
 
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)

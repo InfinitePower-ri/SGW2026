@@ -109,8 +109,9 @@ class TestDistributionPlots(unittest.TestCase):
         axes[1].hist.assert_called_once()
         axes[0].set_xlim.assert_called_once_with(-1.0, 1.0)
         axes[1].set_xlim.assert_called_once_with(0.0, 1.0)
-        axes[0].set_ylim.assert_called_once_with(0, 4000)
-        axes[1].set_ylim.assert_called_once_with(0, 4000)
+        axes[0].set_ylim.assert_called_once_with(0, 2)
+        axes[1].set_xticks.assert_called_once_with([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+        axes[1].set_ylim.assert_called_once_with(0, 2)
         figure.savefig.assert_called_once_with(output_path, dpi=150, bbox_inches="tight")
         pyplot_module.close.assert_called_once_with(figure)
 
